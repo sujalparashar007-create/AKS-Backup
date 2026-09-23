@@ -33,9 +33,5 @@ resource "azurerm_kubernetes_cluster" "aks" {
     type = "SystemAssigned"
   }
 
-  tags = {
-    Environment = "Lab"
-    Project     = "AKS"
-    ManagedBy   = "Terraform"
-  }
+  tags = var.tags
 }

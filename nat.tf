@@ -2,14 +2,10 @@ resource "azurerm_public_ip" "nat" {
   name                = var.nat_public_ip_name
   location            = var.location
   resource_group_name = var.resource_group_name
-  allocation_method   = var.nat_public_ip_prefix
+  allocation_method   = var.nat_public_ip_allocation_method
   sku                 = var.nat_gateway_sku
 
-  tags = {
-    Environment = "Lab"
-    Project     = "AKS"
-    ManagedBy   = "Terraform"
-  }
+  tags = var.tags
 }
 
 resource "azurerm_nat_gateway" "aks" {
@@ -19,11 +15,7 @@ resource "azurerm_nat_gateway" "aks" {
   sku_name                = var.nat_gateway_sku
   idle_timeout_in_minutes = 4
 
-  tags = {
-    Environment = "Lab"
-    Project     = "AKS"
-    ManagedBy   = "Terraform"
-  }
+  tags = var.tags
 }
 
 resource "azurerm_nat_gateway_public_ip_association" "aks" {

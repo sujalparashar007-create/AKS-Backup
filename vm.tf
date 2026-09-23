@@ -25,12 +25,7 @@ resource "azurerm_linux_virtual_machine" "aks_test" {
     version   = "latest"
   }
 
-  tags = {
-    Environment = "Lab"
-    Project     = "AKS"
-    ManagedBy   = "Terraform"
-    Purpose     = "Private AKS DNS Testing"
-  }
+  tags = merge(var.tags, { Purpose = "Private AKS DNS Testing" })
 }
 
 resource "azurerm_network_interface" "aks_test" {

@@ -1,212 +1,143 @@
-# Private AKS Infrastructure with Terraform
+# AKS Backup
 
-This repository provisions a private Azure Kubernetes Service (AKS) cluster with Azure CNI Overlay networking, dedicated node pools, private subnet networking, NAT Gateway-based outbound connectivity, and a Linux test virtual machine.
-
-All infrastructure is managed through Terraform using the AzureRM provider.
+This Terraform project provisions a private primary Azure Kubernetes Service (AKS) cluster, its Azure
+Kubernetes backup pipeline, and an isolated disaster-recovery (DR) AKS environment. The configuration
+uses the AzureRM provider and is intended to manage infrastructure prerequisites without changing the
+application workloads running on either cluster.
 
 ## Architecture
 
-The deployment contains the following components:
-
-- Azure Resource Group: `rg-aks-lab`
-- Azure region: `East US`
-- Virtual Network: `vnet-aks-lab`
-- VNet address space: `10.10.0.0/16`
-- AKS subnet: `snet-aks`
-- AKS subnet address range: `10.10.0.0/22`
-- Private AKS cluster: `aks-lab`
-- AKS DNS prefix: `akslab`
-- System node pool: `system`
-- User/application node pool: `apps`
-- NAT Gateway: `nat-aks-lab`
-- Static NAT public IP: `pip-nat-aks-lab`
-- Linux test VM: `vm-aks-test`
-
-## Networking
-
-The AKS cluster is configured with:
-
-- Azure CNI networking.
-- Azure CNI Overlay mode.
-- IPv4 networking.
-- Pod CIDR: `10.244.0.0/16`.
-- Service CIDR: `10.0.0.0/16`.
-- DNS service IP: `10.0.0.10`.
-- Private AKS cluster access.
-- User-assigned NAT Gateway outbound traffic.
-- No public IPs enabled on the AKS nodes.
-
-The system node pool and user node pool both use the existing AKS subnet. In Azure CNI Overlay mode, pod addresses are allocated from the overlay pod CIDR rather than from additional IP addresses in the Azure VNet subnet.
-
-## Node Pools
-
-### System node pool
-
-- Name: `system`
-- VM size: `Standard_D2alds_v7`
-- Initial node count: `1`
-- Autoscaling range: `1` to `3` nodes
-- Upgrade surge: `10%`
-- Subnet: `snet-aks`
-
-### User/application node pool
-
-- Name: `apps`
-- Mode: `User`
-- VM size: `Standard_D2alds_v7`
-- Initial node count: `1`
-- Autoscaling range: `1` to `5` nodes
-- Upgrade surge: `10%`
-- Subnet: `snet-aks`
-
-## NAT Gateway and Outbound Access
-
-The deployment creates a Standard NAT Gateway with a static Standard public IP address. The public IP is associated with the NAT Gateway, and the NAT Gateway is associated with the AKS subnet.
-
-The AKS cluster is configured with:
-
-```hcl
-outbound_type = "userAssignedNATGateway"
+```text
+                                  +-----------------------------+
+                                  | Azure Data Protection Vault |
+                                  |   backup policy + instance  |
+                                  +--------------+--------------+
+                                                 |
+                                      trusted access + Reader
+                                                 |
++----------------------+       backup       +---v------------------+
+| Primary AKS cluster  |------------------->| Snapshot resource RG |
+| aks-lab (private)    |                    +----------------------+
+| CNI Overlay + NAT    |
++----------+-----------+
+           |
+           | Backup extension
+           | (blob backup location)
+           v
+   +---------------------+       restore prerequisites       +------------------+
+   | Storage account      |<----------------------------------| Isolated DR AKS  |
+   | + blob container     |                                   | aks-lab-dr       |
+   +---------------------+                                   | private + NAT    |
+                                                               +------------------+
 ```
 
-This provides controlled outbound connectivity for resources using the AKS subnet while the AKS control plane remains private.
+### Primary cluster
 
-## Test Virtual Machine
+The primary environment is deployed in `rg-aks-lab` in `East US`:
 
-The repository provisions a Linux test VM for private AKS and network testing:
+- Private cluster `aks-lab` with Azure CNI Overlay networking.
+- VNet `vnet-aks-lab` (`10.10.0.0/16`) and AKS subnet `snet-aks`
+  (`10.10.0.0/22`).
+- System and application node pools, both attached to the AKS subnet.
+- Standard NAT Gateway with static public IP for controlled outbound access.
+- Linux test VM `vm-aks-test` for private-network connectivity testing.
 
-- Name: `vm-aks-test`
-- Image: Ubuntu 24.04 LTS
-- VM size: `Standard_D2alds_v7`
-- Network interface: `nic-aks-test`
-- Network placement: AKS subnet
-- OS disk: Standard LRS
-- Private IP output: `aks_test_vm_private_ip`
+### Backup pipeline
 
-The VM uses the `test_vm_admin_password` Terraform variable for administrator access.
+The primary cluster's backup flow is composed of:
 
-## Repository Files
+1. A dedicated snapshot resource group.
+2. A storage account and blob container for backup extension data.
+3. An Azure Data Protection backup vault.
+4. A Kubernetes backup policy with the configured schedule and retention.
+5. The Azure Kubernetes backup extension and trusted-access binding on the primary cluster.
+6. A backup instance selecting the namespaces and volume snapshot behavior.
+7. Role assignments granting the vault, cluster identity, and extension the permissions required
+   for backup operations.
 
-| File | Purpose |
+### DR environment
+
+The DR environment is isolated in `rg-aks-lab-dr` with its own VNet, AKS subnet, NAT Gateway,
+private AKS cluster, Bastion host, and Linux test VM. The `modules/dr-aks` module owns those
+DR infrastructure resources. Root-level DR resources add the backup extension, trusted access,
+and role assignments required for a future restore.
+
+## Current Scope
+
+Terraform manages the infrastructure and backup/restore prerequisites described above. The actual
+backup restore operation is a **manual operation**, performed through the Azure Portal or Azure CLI;
+it is not triggered or managed by Terraform because the AzureRM provider does not expose a restore
+operation resource. Kubernetes workloads and post-restore application validation are also outside
+the Terraform scope.
+
+## File inventory
+
+| Path | Purpose |
 |---|---|
 | `providers.tf` | Terraform and AzureRM provider requirements |
-| `variables.tf` | Input variable declarations |
-| `terraform.tfvars` | Deployment-specific variable values |
-| `resource-group.tf` | Azure resource group |
-| `network.tf` | Virtual network and AKS subnet |
-| `nat.tf` | NAT Gateway, public IP, and subnet associations |
-| `aks.tf` | Private AKS cluster and system node pool |
-| `node-pool.tf` | User/application node pool |
-| `vm.tf` | Linux test VM and network interface |
-| `outputs.tf` | Deployment outputs |
-| `.terraform.lock.hcl` | Locked AzureRM provider checksums and version |
-| `terraform.tfstate` | Terraform-managed infrastructure state |
-| `terraform.tfstate.backup` | Terraform state backup |
+| `variables.tf` | Root input variable declarations and defaults |
+| `terraform.tfvars` | Deployment-specific input values |
+| `resource-group.tf` | Primary resource groups |
+| `network.tf` | Primary VNet and AKS subnet |
+| `nat.tf` | Primary NAT Gateway and public IP |
+| `aks.tf` | Primary private AKS cluster and system node pool |
+| `node-pool.tf` | Primary application node pool |
+| `vm.tf` | Primary Linux test VM |
+| `backup-resource-group.tf` | Backup snapshot resource group |
+| `backup-storage.tf` | Backup storage account and blob container |
+| `backup-vault.tf` | Azure Data Protection backup vault |
+| `backup-policy.tf` | AKS backup policy |
+| `aks-backup-extension.tf` | Primary backup extension and trusted access |
+| `backup-instance.tf` | Primary AKS backup instance |
+| `backup-role-assignments.tf` | Primary backup identity permissions |
+| `dr.tf` | Root module call for the isolated DR environment |
+| `dr-backup-trusted-access.tf` | DR trusted access and vault permissions |
+| `dr-restore-prerequisites.tf` | DR backup extension and restore permissions |
+| `modules/dr-aks/` | Reusable DR VNet, AKS, NAT, Bastion, and VM resources |
+| `outputs.tf` | Terraform outputs |
+| `.gitignore` | Local Terraform artifacts and variable/state exclusions |
+| `.terraform.lock.hcl` | Provider dependency lock file |
+| `restoreconfig.json` | Restore request configuration reference |
+| `restorerequestobject.json` | Restore request object reference |
 
 ## Prerequisites
 
-Install and authenticate the following tools before deployment:
-
-- Terraform `1.6.0` or later.
-- Azure CLI.
-- An Azure subscription with permissions to create and manage the configured resources.
-- Access to an Azure region that supports the selected VM size and AKS configuration.
-
-Authenticate with Azure:
+- Terraform 1.6 or later.
+- Azure CLI authenticated to the target subscription.
+- An Azure subscription with permissions to manage AKS, networking, storage, Azure Data Protection,
+  managed identities, and role assignments.
 
 ```powershell
 az login
 az account set --subscription "<SUBSCRIPTION_ID_OR_NAME>"
 ```
 
-## Configuration
+## Usage
 
-Deployment values are stored in `terraform.tfvars`. The configuration includes:
-
-- Resource group and region.
-- VNet and subnet names.
-- VNet and subnet address ranges.
-- AKS cluster name and DNS prefix.
-- NAT Gateway and public IP names.
-- NAT Gateway settings.
-- Test VM administrator password.
-
-Do not commit real passwords, credentials, kubeconfig files, or state files to a public repository. Use a protected variable file, environment variables, or a secrets-management system for sensitive values.
-
-## Deploying the Infrastructure
-
-Run the following commands from this directory:
+Run from the repository root:
 
 ```powershell
 terraform init
-terraform validate
-terraform plan
-terraform apply
-```
-
-Review the plan carefully before confirming `terraform apply`.
-
-Display the configured outputs:
-
-```powershell
-terraform output
-```
-
-Display the test VM private IP:
-
-```powershell
-terraform output aks_test_vm_private_ip
-```
-
-## AKS Access
-
-Because this is a private AKS cluster, access to the private API server requires network connectivity from an approved network path, such as the test VM or another connected private network.
-
-After connecting to a machine with private network access, retrieve the AKS credentials with:
-
-```powershell
-az aks get-credentials `
-  --resource-group rg-aks-lab `
-  --name aks-lab
-```
-
-Verify cluster access:
-
-```powershell
-kubectl get nodes
-kubectl get pods --all-namespaces
-```
-
-## Updating the Infrastructure
-
-After changing Terraform configuration or input values:
-
-```powershell
 terraform fmt
 terraform validate
 terraform plan
 terraform apply
 ```
 
-Do not manually edit `terraform.tfstate`. Terraform uses this file to track deployed resources.
-
-## Destroying the Infrastructure
-
-To remove all resources managed by this Terraform configuration:
+Review the plan before applying. Because the AKS clusters are private, Kubernetes access requires
+connectivity from the test VM or another connected private network.
 
 ```powershell
-terraform destroy
+az aks get-credentials `
+  --resource-group rg-aks-lab `
+  --name aks-lab
+kubectl get nodes
 ```
 
-This operation is destructive. Review the proposed destroy plan carefully before confirming it.
+To inspect outputs:
 
-## Current Scope
+```powershell
+terraform output
+```
 
-This repository provisions Azure infrastructure only. It does not currently contain:
-
-- Kubernetes workload manifests.
-- Application deployments.
-- Services or ingress resources.
-- Container registry resources.
-- CI/CD pipeline definitions.
-- Monitoring, logging, or alerting resources.
+Never manually edit `terraform.tfstate`; Terraform uses it to track the deployed infrastructure.

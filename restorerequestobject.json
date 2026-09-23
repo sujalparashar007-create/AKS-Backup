@@ -1,0 +1,48 @@
+{
+  "object_type": "AzureBackupRecoveryPointBasedRestoreRequest",
+  "recovery_point_id": "096068e9fe034d35b11736417296e00b",
+  "restore_target_info": {
+    "datasource_info": {
+      "datasource_type": "Microsoft.ContainerService/managedClusters",
+      "object_type": "Datasource",
+      "resource_id": "/subscriptions/7eb6f3d0-6e2a-4f35-94be-c79dfdc512fd/resourceGroups/rg-aks-lab-dr/providers/Microsoft.ContainerService/managedClusters/aks-lab-dr",
+      "resource_location": "eastus",
+      "resource_name": "aks-lab-dr",
+      "resource_type": "Microsoft.ContainerService/managedclusters",
+      "resource_uri": "/subscriptions/7eb6f3d0-6e2a-4f35-94be-c79dfdc512fd/resourceGroups/rg-aks-lab-dr/providers/Microsoft.ContainerService/managedClusters/aks-lab-dr"
+    },
+    "datasource_set_info": {
+      "datasource_type": "Microsoft.ContainerService/managedClusters",
+      "object_type": "DatasourceSet",
+      "resource_id": "/subscriptions/7eb6f3d0-6e2a-4f35-94be-c79dfdc512fd/resourceGroups/rg-aks-lab-dr/providers/Microsoft.ContainerService/managedClusters/aks-lab-dr",
+      "resource_location": "eastus",
+      "resource_name": "aks-lab-dr",
+      "resource_type": "Microsoft.ContainerService/managedclusters",
+      "resource_uri": "/subscriptions/7eb6f3d0-6e2a-4f35-94be-c79dfdc512fd/resourceGroups/rg-aks-lab-dr/providers/Microsoft.ContainerService/managedClusters/aks-lab-dr"
+    },
+    "object_type": "ItemLevelRestoreTargetInfo",
+    "recovery_option": "FailIfExists",
+    "restore_criteria": [
+      {
+        "conflict_policy": "Skip",
+        "excluded_namespaces": null,
+        "excluded_resource_types": null,
+        "include_cluster_scope_resources": true,
+        "included_namespaces": [
+          "default"
+        ],
+        "included_resource_types": null,
+        "label_selectors": null,
+        "namespace_mappings": null,
+        "object_type": "KubernetesClusterRestoreCriteria",
+        "persistent_volume_restore_mode": "RestoreWithVolumeData",
+        "resource_modifier_reference": null,
+        "restore_hook_references": null,
+        "staging_resource_group_id": null,
+        "staging_storage_account_id": null
+      }
+    ],
+    "restore_location": "eastus"
+  },
+  "source_data_store_type": "OperationalStore"
+}

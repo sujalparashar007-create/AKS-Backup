@@ -4,11 +4,7 @@ resource "azurerm_virtual_network" "aks" {
   resource_group_name = var.resource_group_name
   address_space       = var.vnet_address_space
 
-  tags = {
-    Environment = "Lab"
-    Project     = "AKS"
-    ManagedBy   = "Terraform"
-  }
+  tags = var.tags
 }
 
 resource "azurerm_subnet" "aks" {
